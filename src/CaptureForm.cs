@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -80,6 +80,33 @@ namespace DpSnip
                 float h = Math.Abs(Points[1].Y - Points[0].Y);
                 return w >= 3f || h >= 3f || Kind == CaptureTool.Pen;
             }
+        }
+
+        public RectangleF GetBounds()
+        {
+            if (Points.Count == 0)
+            {
+                return RectangleF.Empty;
+            }
+
+            float minX = Points[0].X;
+            float minY = Points[0].Y;
+            float maxX = minX;
+            float maxY = minY;
+            for (int i = 1; i < Points.Count; i++)
+            {
+                if (Points[i].X < minX) minX = Points[i].X;
+                if (Points[i].Y < minY) minY = Points[i].Y;
+                if (Points[i].X > maxX) maxX = Points[i].X;
+                if (Points[i].Y > maxY) maxY = Points[i].Y;
+            }
+
+            float padding = Math.Max(6f, Width * 2.5f + 4f);
+            return new RectangleF(
+                minX - padding,
+                minY - padding,
+                maxX - minX + padding * 2f,
+                maxY - minY + padding * 2f);
         }
 
         public void Render(Graphics g, Point offset)
@@ -256,13 +283,10 @@ namespace DpSnip
         private DragMode _dragMode;
         private int _resizeHandle = -1;
         private Point _dragAnchor;
-        private Point _lastMouse;
         private Rectangle _dragStartSelection;
         private Annotation _drawing;
         private float _uiScale = 1f;
 
-        private Font _fontTitle;
-        private Font _fontSubtitle;
         private Font _fontBadge;
         private Font _fontTooltip;
         private Font _fontButton;
@@ -309,21 +333,18 @@ namespace DpSnip
 
             SetStyle(ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.Opaque |
                      ControlStyles.UserPaint |
                      ControlStyles.ResizeRedraw, true);
 
             _uiScale = Native.GetUiScaleForPoint(Cursor.Position);
             RecreateFonts();
-
-            Point cursor = Native.GetCursorPosition();
-            _lastMouse = new Point(cursor.X - _screenBounds.X, cursor.Y - _screenBounds.Y);
         }
 
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
             Bounds = _screenBounds;
-            _lastMouse = LocalPoint(Native.GetCursorPosition());
             Native.SetForegroundWindow(Handle);
             Activate();
             Invalidate();
@@ -344,8 +365,6 @@ namespace DpSnip
         private void RecreateFonts()
         {
             DisposeFonts();
-            _fontTitle = DrawUtil.CreateFont(17f * _uiScale, FontStyle.Bold);
-            _fontSubtitle = DrawUtil.CreateFont(12.5f * _uiScale, FontStyle.Regular);
             _fontBadge = DrawUtil.CreateFont(11.5f * _uiScale, FontStyle.Bold);
             _fontTooltip = DrawUtil.CreateFont(12f * _uiScale, FontStyle.Regular);
             _fontButton = DrawUtil.CreateFont(12.8f * _uiScale, FontStyle.Bold);
@@ -357,8 +376,7 @@ namespace DpSnip
         {
             Font[] fonts = new Font[]
             {
-                _fontTitle, _fontSubtitle, _fontBadge, _fontTooltip,
-                _fontButton, _fontIcon, _fontPaletteTitle
+                _fontBadge, _fontTooltip, _fontButton, _fontIcon, _fontPaletteTitle
             };
             for (int i = 0; i < fonts.Length; i++)
             {
@@ -368,8 +386,6 @@ namespace DpSnip
                 }
             }
 
-            _fontTitle = null;
-            _fontSubtitle = null;
             _fontBadge = null;
             _fontTooltip = null;
             _fontButton = null;
@@ -411,20 +427,27 @@ namespace DpSnip
             }
         }
 
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            // Background is composed from the captured screen in OnPaint.
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
+            if (ClientRectangle.Width <= 0 || ClientRectangle.Height <= 0)
+            {
+                return;
+            }
+
             Graphics g = e.Graphics;
-            g.CompositingMode = CompositingMode.SourceCopy;
-            g.DrawImageUnscaled(_screen, 0, 0);
-            g.CompositingMode = CompositingMode.SourceOver;
+            DrawBackgroundRegion(g);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
 
             if (_hasSelection && _selection.Width > 0 && _selection.Height > 0)
             {
-                DrawDimmedOutside(g, _selection);
                 DrawAnnotations(g);
                 DrawSelectionBorder(g);
                 DrawSizeBadge(g);
@@ -446,48 +469,61 @@ namespace DpSnip
                     DrawHoverTooltip(g);
                 }
             }
-            else
-            {
-                using (SolidBrush dim = new SolidBrush(Color.FromArgb(124, 0, 0, 0)))
-                {
-                    g.FillRectangle(dim, ClientRectangle);
-                }
-
-                DrawCrosshair(g);
-                DrawEmptyHint(g);
-            }
         }
 
-        private void DrawDimmedOutside(Graphics g, Rectangle selection)
+        private void DrawBackgroundRegion(Graphics g)
         {
-            Rectangle sel = selection;
-            sel.Intersect(new Rectangle(0, 0, _screen.Width, _screen.Height));
-            if (sel.Width <= 0 || sel.Height <= 0)
+            // Repaint only the invalidated region. This keeps dragging a selection
+            // responsive even on 4K / multi-monitor desktops.
+            RectangleF[] scans;
+            using (Matrix matrix = new Matrix())
             {
-                return;
+                scans = g.Clip.GetRegionScans(matrix);
             }
 
             using (SolidBrush dim = new SolidBrush(Color.FromArgb(124, 0, 0, 0)))
             {
-                if (sel.Top > 0)
+                for (int i = 0; i < scans.Length; i++)
                 {
-                    g.FillRectangle(dim, 0, 0, _screen.Width, sel.Top);
-                }
+                    Rectangle clip = Rectangle.Round(scans[i]);
+                    clip.Intersect(ClientRectangle);
+                    if (clip.Width <= 0 || clip.Height <= 0)
+                    {
+                        continue;
+                    }
 
-                if (sel.Bottom < _screen.Height)
-                {
-                    g.FillRectangle(dim, 0, sel.Bottom, _screen.Width, _screen.Height - sel.Bottom);
-                }
+                    g.CompositingMode = CompositingMode.SourceCopy;
+                    g.DrawImage(_screen, clip, clip.X, clip.Y, clip.Width, clip.Height, GraphicsUnit.Pixel);
+                    g.CompositingMode = CompositingMode.SourceOver;
 
-                if (sel.Left > 0)
-                {
-                    g.FillRectangle(dim, 0, sel.Top, sel.Left, sel.Height);
-                }
+                    if (!_hasSelection || _selection.Width <= 0 || _selection.Height <= 0)
+                    {
+                        g.FillRectangle(dim, clip);
+                        continue;
+                    }
 
-                if (sel.Right < _screen.Width)
-                {
-                    g.FillRectangle(dim, sel.Right, sel.Top, _screen.Width - sel.Right, sel.Height);
+                    Rectangle visible = Rectangle.Intersect(clip, _selection);
+                    if (visible.Width <= 0 || visible.Height <= 0)
+                    {
+                        g.FillRectangle(dim, clip);
+                        continue;
+                    }
+
+                    // Dim only the part of this invalid region outside the selection.
+                    // This avoids a second full image blit for the selected area.
+                    FillDimBand(g, dim, Rectangle.FromLTRB(clip.Left, clip.Top, clip.Right, visible.Top));
+                    FillDimBand(g, dim, Rectangle.FromLTRB(clip.Left, visible.Bottom, clip.Right, clip.Bottom));
+                    FillDimBand(g, dim, Rectangle.FromLTRB(clip.Left, visible.Top, visible.Left, visible.Bottom));
+                    FillDimBand(g, dim, Rectangle.FromLTRB(visible.Right, visible.Top, clip.Right, visible.Bottom));
                 }
+            }
+        }
+
+        private static void FillDimBand(Graphics g, Brush brush, Rectangle band)
+        {
+            if (band.Width > 0 && band.Height > 0)
+            {
+                g.FillRectangle(brush, band);
             }
         }
 
@@ -496,7 +532,7 @@ namespace DpSnip
             GraphicsState state = g.Save();
             Rectangle clip = _selection;
             clip.Inflate(1, 1);
-            g.SetClip(clip);
+            g.SetClip(clip, CombineMode.Intersect);
             foreach (Annotation annotation in _annotations)
             {
                 annotation.Render(g, _selection.Location);
@@ -606,114 +642,6 @@ namespace DpSnip
                 new Point(r.Left, r.Bottom),
                 new Point(r.Left, cy)
             };
-        }
-
-        private void DrawCrosshair(Graphics g)
-        {
-            if (_lastMouse.X < 0 || _lastMouse.Y < 0 ||
-                _lastMouse.X >= _screen.Width || _lastMouse.Y >= _screen.Height)
-            {
-                return;
-            }
-
-            using (Pen line = new Pen(Color.FromArgb(105, 255, 255, 255), 1f))
-            {
-                line.DashStyle = DashStyle.Dot;
-                g.DrawLine(line, _lastMouse.X, 0, _lastMouse.X, _screen.Height);
-                g.DrawLine(line, 0, _lastMouse.Y, _screen.Width, _lastMouse.Y);
-            }
-        }
-
-        private void DrawEmptyHint(Graphics g)
-        {
-            Rectangle work = Native.GetMonitorWorkArea(new Point(
-                _screenBounds.X + _lastMouse.X,
-                _screenBounds.Y + _lastMouse.Y));
-            Rectangle localWork = new Rectangle(
-                work.X - _screenBounds.X,
-                work.Y - _screenBounds.Y,
-                work.Width,
-                work.Height);
-
-            float width = Math.Min(476f * _uiScale, localWork.Width - 24f * _uiScale);
-            float height = 94f * _uiScale;
-            float x = localWork.Left + (localWork.Width - width) / 2f;
-            float y = localWork.Top + (localWork.Height - height) / 2f;
-            if (x < 8f * _uiScale)
-            {
-                x = 8f * _uiScale;
-            }
-
-            RectangleF hint = new RectangleF(x, y, width, height);
-
-            for (int i = 3; i >= 1; i--)
-            {
-                RectangleF shadow = hint;
-                shadow.Offset(0f, i * 1.5f * _uiScale);
-                DrawUtil.FillRounded(g, Color.FromArgb(20, 0, 0, 0), shadow, 15f * _uiScale);
-            }
-
-            DrawUtil.FillRounded(g, Color.FromArgb(238, 28, 32, 41), hint, 15f * _uiScale);
-            DrawUtil.DrawRounded(g, Color.FromArgb(30, 255, 255, 255), 1f, hint, 15f * _uiScale);
-
-            float iconBox = 48f * _uiScale;
-            RectangleF iconRect = new RectangleF(
-                hint.X + 17f * _uiScale,
-                hint.Y + (hint.Height - iconBox) / 2f,
-                iconBox, iconBox);
-            DrawUtil.FillRounded(g, Color.FromArgb(45, AppPalette.Accent), iconRect, 12f * _uiScale);
-
-            using (Pen bracket = new Pen(Color.FromArgb(245, 255, 255, 255), Math.Max(1.4f, 2.1f * _uiScale)))
-            {
-                bracket.StartCap = LineCap.Round;
-                bracket.EndCap = LineCap.Round;
-                float left = iconRect.X + 13f * _uiScale;
-                float top = iconRect.Y + 14f * _uiScale;
-                float right = iconRect.Right - 13f * _uiScale;
-                float bottom = iconRect.Bottom - 14f * _uiScale;
-                float arm = 6f * _uiScale;
-                g.DrawLines(bracket, new PointF[]
-                {
-                    new PointF(left, top + arm), new PointF(left, top), new PointF(left + arm, top)
-                });
-                g.DrawLines(bracket, new PointF[]
-                {
-                    new PointF(right - arm, top), new PointF(right, top), new PointF(right, top + arm)
-                });
-                g.DrawLines(bracket, new PointF[]
-                {
-                    new PointF(left, bottom - arm), new PointF(left, bottom), new PointF(left + arm, bottom)
-                });
-                g.DrawLines(bracket, new PointF[]
-                {
-                    new PointF(right - arm, bottom), new PointF(right, bottom), new PointF(right, bottom - arm)
-                });
-            }
-
-            float textX = hint.X + 81f * _uiScale;
-            float textWidth = hint.Right - textX - 16f * _uiScale;
-            DrawUtil.DrawText(g, "拖动鼠标，框选截图区域", _fontTitle, AppPalette.Text,
-                new RectangleF(textX, hint.Y + 17f * _uiScale, textWidth, 24f * _uiScale),
-                StringAlignment.Near, StringAlignment.Center, true);
-            DrawUtil.DrawText(g, "框选后可标注、添加箭头、识别文字   ·   Esc 退出", _fontSubtitle,
-                AppPalette.MutedText,
-                new RectangleF(textX, hint.Y + 46f * _uiScale, textWidth, 22f * _uiScale),
-                StringAlignment.Near, StringAlignment.Center, true);
-
-            float footerY = localWork.Bottom - 42f * _uiScale;
-            if (footerY > hint.Bottom + 12f * _uiScale && footerY < _screen.Height - 16f * _uiScale)
-            {
-                string hotkey = "Ctrl+Alt+A  ·  截图模式";
-                SizeF size = g.MeasureString(hotkey, _fontSubtitle);
-                RectangleF pill = new RectangleF(
-                    localWork.Left + (localWork.Width - size.Width - 30f * _uiScale) / 2f,
-                    footerY,
-                    size.Width + 30f * _uiScale,
-                    28f * _uiScale);
-                DrawUtil.FillRounded(g, Color.FromArgb(150, 22, 25, 32), pill, 14f * _uiScale);
-                DrawUtil.DrawText(g, hotkey, _fontSubtitle, Color.FromArgb(225, 220, 226, 236), pill,
-                    StringAlignment.Center, StringAlignment.Center, true);
-            }
         }
 
         private void BuildToolbarLayout()
@@ -1548,6 +1476,236 @@ namespace DpSnip
             return -1;
         }
 
+        private Rectangle GetSelectionDirtyBounds(Rectangle selection)
+        {
+            if (selection.Width <= 0 || selection.Height <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            int scalePad = (int)Math.Ceiling(18f * _uiScale);
+            Rectangle dirty = selection;
+            dirty.Inflate(scalePad, scalePad);
+
+            int badgeWidth = (int)Math.Ceiling(380f * _uiScale);
+            int badgeHeight = (int)Math.Ceiling(120f * _uiScale);
+            Rectangle badgeZone = new Rectangle(
+                selection.Left - (int)Math.Ceiling(190f * _uiScale),
+                selection.Top - (int)Math.Ceiling(55f * _uiScale),
+                badgeWidth,
+                badgeHeight);
+            dirty = Rectangle.Union(dirty, badgeZone);
+            dirty.Intersect(ClientRectangle);
+            return dirty;
+        }
+
+        private Rectangle GetSizeBadgeDirtyBounds(Rectangle selection)
+        {
+            if (selection.Width <= 0 || selection.Height <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            Rectangle zone = new Rectangle(
+                selection.Left - (int)Math.Ceiling(230f * _uiScale),
+                selection.Top - (int)Math.Ceiling(60f * _uiScale),
+                (int)Math.Ceiling(500f * _uiScale),
+                (int)Math.Ceiling(150f * _uiScale));
+            zone.Intersect(ClientRectangle);
+            return zone;
+        }
+
+        private static void AddClippedDirty(List<Rectangle> regions, Rectangle region, int padding)
+        {
+            if (region.Width <= 0 || region.Height <= 0)
+            {
+                return;
+            }
+
+            if (padding > 0)
+            {
+                region.Inflate(padding, padding);
+            }
+
+            if (region.Width > 0 && region.Height > 0)
+            {
+                regions.Add(region);
+            }
+        }
+
+        private static void AddBorderDirty(List<Rectangle> regions, Rectangle selection, int thickness)
+        {
+            if (selection.Width <= 0 || selection.Height <= 0)
+            {
+                return;
+            }
+
+            AddClippedDirty(regions,
+                Rectangle.FromLTRB(selection.Left - thickness, selection.Top - thickness,
+                    selection.Right + thickness, selection.Top + thickness), 0);
+            AddClippedDirty(regions,
+                Rectangle.FromLTRB(selection.Left - thickness, selection.Bottom - thickness,
+                    selection.Right + thickness, selection.Bottom + thickness), 0);
+            AddClippedDirty(regions,
+                Rectangle.FromLTRB(selection.Left - thickness, selection.Top,
+                    selection.Left + thickness, selection.Bottom), 0);
+            AddClippedDirty(regions,
+                Rectangle.FromLTRB(selection.Right - thickness, selection.Top,
+                    selection.Right + thickness, selection.Bottom), 0);
+        }
+
+        private void InvalidateCreationChange(Rectangle oldSelection, Rectangle newSelection)
+        {
+            List<Rectangle> regions = new List<Rectangle>();
+            Rectangle screen = new Rectangle(0, 0, _screen.Width, _screen.Height);
+            Rectangle oldSel = Rectangle.Intersect(oldSelection, screen);
+            Rectangle newSel = Rectangle.Intersect(newSelection, screen);
+
+            int borderPadding = (int)Math.Ceiling(7f * _uiScale);
+            int borderThickness = (int)Math.Ceiling(4f * _uiScale);
+            AddBorderDirty(regions, oldSel, borderThickness);
+            AddBorderDirty(regions, newSel, borderThickness);
+            Rectangle overlap = Rectangle.Intersect(oldSel, newSel);
+            if (overlap.Width <= 0 || overlap.Height <= 0)
+            {
+                AddClippedDirty(regions, oldSel, borderPadding);
+                AddClippedDirty(regions, newSel, borderPadding);
+            }
+            else
+            {
+                // Only pixels whose dim/bright state changed need repainting.
+                AddClippedDirty(regions,
+                    Rectangle.FromLTRB(oldSel.Left, oldSel.Top, oldSel.Right, overlap.Top), borderPadding);
+                AddClippedDirty(regions,
+                    Rectangle.FromLTRB(oldSel.Left, overlap.Bottom, oldSel.Right, oldSel.Bottom), borderPadding);
+                AddClippedDirty(regions,
+                    Rectangle.FromLTRB(oldSel.Left, overlap.Top, overlap.Left, overlap.Bottom), borderPadding);
+                AddClippedDirty(regions,
+                    Rectangle.FromLTRB(overlap.Right, overlap.Top, oldSel.Right, overlap.Bottom), borderPadding);
+
+                AddClippedDirty(regions,
+                    Rectangle.FromLTRB(newSel.Left, newSel.Top, newSel.Right, overlap.Top), borderPadding);
+                AddClippedDirty(regions,
+                    Rectangle.FromLTRB(newSel.Left, overlap.Bottom, newSel.Right, newSel.Bottom), borderPadding);
+                AddClippedDirty(regions,
+                    Rectangle.FromLTRB(newSel.Left, overlap.Top, overlap.Left, overlap.Bottom), borderPadding);
+                AddClippedDirty(regions,
+                    Rectangle.FromLTRB(overlap.Right, overlap.Top, newSel.Right, overlap.Bottom), borderPadding);
+            }
+
+            AddClippedDirty(regions, GetSizeBadgeDirtyBounds(oldSel), 0);
+            AddClippedDirty(regions, GetSizeBadgeDirtyBounds(newSel), 0);
+
+            if (regions.Count > 0)
+            {
+                InvalidateDirty(regions.ToArray());
+            }
+        }
+
+        private Rectangle GetToolbarDirtyBounds(Rectangle toolbar)
+        {
+            if (toolbar.Width <= 0 || toolbar.Height <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            int pad = (int)Math.Ceiling(18f * _uiScale);
+            int horizontal = (int)Math.Ceiling(220f * _uiScale);
+            int vertical = (int)Math.Ceiling(60f * _uiScale);
+
+            Rectangle dirty = toolbar;
+            dirty.Inflate(pad, pad);
+            Rectangle tooltipZone = new Rectangle(
+                toolbar.Left - horizontal,
+                toolbar.Top - vertical,
+                toolbar.Width + horizontal * 2,
+                toolbar.Height + vertical * 2);
+            dirty = Rectangle.Union(dirty, tooltipZone);
+            dirty.Intersect(ClientRectangle);
+            return dirty;
+        }
+
+        private Rectangle GetPaletteDirtyBounds()
+        {
+            if (!_paletteOpen || _paletteBounds.Width <= 0 || _paletteBounds.Height <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            Rectangle dirty = _paletteBounds;
+            dirty.Inflate((int)Math.Ceiling(18f * _uiScale), (int)Math.Ceiling(18f * _uiScale));
+            dirty.Intersect(ClientRectangle);
+            return dirty;
+        }
+
+        private Rectangle GetDrawingDirtyBounds()
+        {
+            if (_drawing == null || _selection.Width <= 0 || _selection.Height <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            RectangleF bounds = _drawing.GetBounds();
+            if (bounds.Width <= 0f || bounds.Height <= 0f)
+            {
+                return Rectangle.Empty;
+            }
+
+            Rectangle dirty = Rectangle.FromLTRB(
+                (int)Math.Floor(bounds.Left + _selection.Left),
+                (int)Math.Floor(bounds.Top + _selection.Top),
+                (int)Math.Ceiling(bounds.Right + _selection.Left),
+                (int)Math.Ceiling(bounds.Bottom + _selection.Top));
+
+            Rectangle clip = _selection;
+            clip.Inflate(2, 2);
+            dirty.Intersect(clip);
+            dirty.Intersect(ClientRectangle);
+            return dirty;
+        }
+
+        private void InvalidateDirty(params Rectangle[] regions)
+        {
+            if (regions == null)
+            {
+                return;
+            }
+
+            Region dirty = null;
+            try
+            {
+                for (int i = 0; i < regions.Length; i++)
+                {
+                    Rectangle region = regions[i];
+                    if (region.Width <= 0 || region.Height <= 0)
+                    {
+                        continue;
+                    }
+
+                    if (dirty == null)
+                    {
+                        dirty = new Region(region);
+                    }
+                    else
+                    {
+                        dirty.Union(region);
+                    }
+                }
+
+                if (dirty != null)
+                {
+                    Invalidate(dirty);
+                }
+            }
+            finally
+            {
+                if (dirty != null)
+                {
+                    dirty.Dispose();
+                }
+            }
+        }
+
         private void BeginCreate(Point location)
         {
             _paletteOpen = false;
@@ -1595,7 +1753,6 @@ namespace DpSnip
 
             _dragMode = DragMode.Drawing;
             _dragAnchor = location;
-            _lastMouse = location;
             _hoverAction = null;
             Invalidate();
         }
@@ -1622,8 +1779,6 @@ namespace DpSnip
             {
                 return;
             }
-
-            _lastMouse = e.Location;
 
             if (_paletteOpen)
             {
@@ -1694,39 +1849,48 @@ namespace DpSnip
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
-            _lastMouse = e.Location;
 
             if (_dragMode == DragMode.Creating)
             {
+                Rectangle oldSelection = _selection;
                 Point current = ClampToScreen(e.Location);
                 _selection = NormalizeRect(_dragAnchor, current);
-                Invalidate();
+                InvalidateCreationChange(oldSelection, _selection);
                 UpdateCursor(e.Location);
                 return;
             }
 
             if (_dragMode == DragMode.Moving)
             {
+                Rectangle oldSelectionDirty = GetSelectionDirtyBounds(_selection);
+                Rectangle oldToolbarDirty = GetToolbarDirtyBounds(_toolbarBounds);
                 int newX = _dragStartSelection.X + (e.X - _dragAnchor.X);
                 int newY = _dragStartSelection.Y + (e.Y - _dragAnchor.Y);
                 newX = Math.Max(0, Math.Min(_screen.Width - _selection.Width, newX));
                 newY = Math.Max(0, Math.Min(_screen.Height - _selection.Height, newY));
                 _selection = new Rectangle(newX, newY, _selection.Width, _selection.Height);
-                Invalidate();
+                BuildToolbarLayout();
+                InvalidateDirty(oldSelectionDirty, GetSelectionDirtyBounds(_selection),
+                    oldToolbarDirty, GetToolbarDirtyBounds(_toolbarBounds));
                 UpdateCursor(e.Location);
                 return;
             }
 
             if (_dragMode == DragMode.Resizing)
             {
+                Rectangle oldSelectionDirty = GetSelectionDirtyBounds(_selection);
+                Rectangle oldToolbarDirty = GetToolbarDirtyBounds(_toolbarBounds);
                 ResizeSelection(e.Location);
-                Invalidate();
+                BuildToolbarLayout();
+                InvalidateDirty(oldSelectionDirty, GetSelectionDirtyBounds(_selection),
+                    oldToolbarDirty, GetToolbarDirtyBounds(_toolbarBounds));
                 UpdateCursor(e.Location);
                 return;
             }
 
             if (_dragMode == DragMode.Drawing && _drawing != null)
             {
+                Rectangle oldDirty = GetDrawingDirtyBounds();
                 Point local = new Point(e.X - _selection.Left, e.Y - _selection.Top);
                 if (_drawing.Kind == CaptureTool.Pen)
                 {
@@ -1750,7 +1914,7 @@ namespace DpSnip
                     }
                 }
 
-                Invalidate();
+                InvalidateDirty(oldDirty, GetDrawingDirtyBounds());
                 return;
             }
 
@@ -1775,7 +1939,14 @@ namespace DpSnip
             UpdateCursor(e.Location);
             if (oldHover != _hoverAction || oldPalette != _hoverPalette)
             {
-                Invalidate();
+                if (_paletteOpen)
+                {
+                    InvalidateDirty(GetPaletteDirtyBounds());
+                }
+                else
+                {
+                    InvalidateDirty(GetToolbarDirtyBounds(_toolbarBounds));
+                }
             }
         }
 
@@ -1789,12 +1960,16 @@ namespace DpSnip
 
             if (_dragMode == DragMode.Creating)
             {
+                Rectangle oldSelectionDirty = GetSelectionDirtyBounds(_selection);
+                Rectangle oldToolbarDirty = GetToolbarDirtyBounds(_toolbarBounds);
                 _selection = NormalizeRect(_dragAnchor, ClampToScreen(e.Location));
                 if (_selection.Width >= 4 && _selection.Height >= 4)
                 {
                     _hasSelection = true;
                     _selection.Intersect(new Rectangle(0, 0, _screen.Width, _screen.Height));
                     _tool = CaptureTool.Select;
+                    _dragMode = DragMode.None;
+                    Capture = false;
                     UpdateUiScale();
                     BuildToolbarLayout();
                 }
@@ -1804,28 +1979,34 @@ namespace DpSnip
                     _selection = Rectangle.Empty;
                     _annotations.Clear();
                     _redo.Clear();
+                    _dragMode = DragMode.None;
+                    Capture = false;
                 }
 
-                _dragMode = DragMode.None;
-                Capture = false;
-                Invalidate();
+                InvalidateDirty(oldSelectionDirty, GetSelectionDirtyBounds(_selection),
+                    oldToolbarDirty, GetToolbarDirtyBounds(_toolbarBounds));
                 UpdateCursor(e.Location);
                 return;
             }
 
             if (_dragMode == DragMode.Moving || _dragMode == DragMode.Resizing)
             {
+                Rectangle oldSelectionDirty = GetSelectionDirtyBounds(_selection);
+                Rectangle oldToolbarDirty = GetToolbarDirtyBounds(_toolbarBounds);
                 _dragMode = DragMode.None;
                 Capture = false;
                 UpdateUiScale();
                 BuildToolbarLayout();
-                Invalidate();
+                InvalidateDirty(oldSelectionDirty, GetSelectionDirtyBounds(_selection),
+                    oldToolbarDirty, GetToolbarDirtyBounds(_toolbarBounds));
                 UpdateCursor(e.Location);
                 return;
             }
 
             if (_dragMode == DragMode.Drawing)
             {
+                Rectangle oldDrawingDirty = GetDrawingDirtyBounds();
+                Rectangle oldToolbarDirty = GetToolbarDirtyBounds(_toolbarBounds);
                 if (_drawing != null)
                 {
                     bool accept = _drawing.Kind == CaptureTool.Pen
@@ -1841,7 +2022,9 @@ namespace DpSnip
                 _drawing = null;
                 _dragMode = DragMode.None;
                 Capture = false;
-                Invalidate();
+                BuildToolbarLayout();
+                InvalidateDirty(oldDrawingDirty, GetDrawingDirtyBounds(),
+                    oldToolbarDirty, GetToolbarDirtyBounds(_toolbarBounds));
                 UpdateCursor(e.Location);
                 return;
             }
@@ -1865,16 +2048,17 @@ namespace DpSnip
         protected override void OnMouseLeave(EventArgs e)
         {
             base.OnMouseLeave(e);
+            Rectangle dirty = _paletteOpen
+                ? GetPaletteDirtyBounds()
+                : GetToolbarDirtyBounds(_toolbarBounds);
             _hoverAction = null;
             _hoverPalette = -1;
-            Invalidate();
+            InvalidateDirty(dirty);
         }
 
         protected override void OnMouseEnter(EventArgs e)
         {
             base.OnMouseEnter(e);
-            _lastMouse = PointToClient(Cursor.Position);
-            Invalidate();
         }
 
         protected override void OnKeyDown(KeyEventArgs e)
@@ -2159,11 +2343,6 @@ namespace DpSnip
             return new Point(
                 Math.Max(0, Math.Min(_screen.Width - 1, point.X)),
                 Math.Max(0, Math.Min(_screen.Height - 1, point.Y)));
-        }
-
-        private Point LocalPoint(Point screenPoint)
-        {
-            return new Point(screenPoint.X - _screenBounds.X, screenPoint.Y - _screenBounds.Y);
         }
 
         private void ExecuteBarAction(BarAction action)
@@ -2661,4 +2840,3 @@ namespace DpSnip
         }
     }
 }
-
