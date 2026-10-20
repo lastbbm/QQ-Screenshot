@@ -77,11 +77,11 @@
 说明：
 
 - GIF 使用 256 色调色板，默认约 10 FPS，适合录制动图、操作演示和短片段；录制很大区域时建议缩小选区。
-- MP4 使用 Windows 内置 Media Foundation / MediaComposition 编码为 H.264，不包含音轨，不依赖外部 ffmpeg。
+- MP4 使用 Windows 内置 Media Foundation / MediaComposition 编码为 H.264，不包含音轨，不依赖外部 ffmpeg。源帧使用 PNG 无损采集，码率提高到 8–30 Mbps，以减少文字和边缘的压缩痕迹。
 - 停止后需要等待编码完成；MP4 的生成时间会随录制长度增加。
 - 录制控制条会尽量放在选区外；如果选区几乎铺满屏幕，控制条可能出现在录制画面中。
 - 录制文件会先写入系统临时目录，保存或取消后自动清理。
-- 录屏只捕获屏幕内容，不包含鼠标指针。
+- GIF / MP4 录制会包含鼠标指针。
 
 ## 开机启动
 
@@ -120,7 +120,7 @@ DpSnip = "<DpSnip.exe 的完整路径>" --autostart
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-输出：`DpSnip.exe`（单文件，约 145 KB）。
+输出：`DpSnip.exe`（单文件，约 146 KB）。
 
 目录结构：
 
@@ -162,6 +162,12 @@ powershell -ExecutionPolicy Bypass -File .\tools\make-icon.ps1
 
 ## 更新记录
 
+### 1.1.1
+
+- 修复录制控制条中计时文字与「停止」按钮重叠的问题，计时改为左移。
+- 提高 MP4 画质：帧采集改为 PNG 无损源图，H.264 码率提升至 8–30 Mbps。
+- GIF / MP4 录制现在会把鼠标指针一并捕获进画面。
+
 ### 1.1.0
 
 - 工具栏 OCR 图标由「文」改为「识」，字号略微缩小。
@@ -190,4 +196,4 @@ powershell -ExecutionPolicy Bypass -File .\tools\make-icon.ps1
 
 ## 版本
 
-1.1.0
+1.1.1

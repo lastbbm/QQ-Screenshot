@@ -58,7 +58,7 @@ namespace DpSnip
             profile.Video.Height = (uint)height;
             profile.Video.FrameRate.Numerator = (uint)safeFrameRate;
             profile.Video.FrameRate.Denominator = 1;
-            profile.Video.Bitrate = (uint)Math.Max(1000000, Math.Min(12000000, width * height * 3));
+            profile.Video.Bitrate = (uint)Math.Max(8000000, Math.Min(30000000, width * height * 10));
 
             IAsyncOperationWithProgress<TranscodeFailureReason, double> operation =
                 composition.RenderToFileAsync(output, MediaTrimmingPreference.Fast, profile);

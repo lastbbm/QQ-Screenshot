@@ -19,6 +19,8 @@ namespace DpSnip
         public const int SM_CXVIRTUALSCREEN = 78;
         public const int SM_CYVIRTUALSCREEN = 79;
 
+        private const int CURSOR_SHOWING = 0x00000001;
+        private const uint DI_NORMAL = 0x00000003;
         private const uint MONITOR_DEFAULTTONEAREST = 2;
         private const int MDT_EFFECTIVE_DPI = 0;
 
@@ -33,6 +35,26 @@ namespace DpSnip
                 X = x;
                 Y = y;
             }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct CURSORINFO
+        {
+            public int cbSize;
+            public int flags;
+            public IntPtr hCursor;
+            public POINT ptScreenPos;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ICONINFO
+        {
+            [MarshalAs(UnmanagedType.Bool)]
+            public bool fIcon;
+            public int xHotspot;
+            public int yHotspot;
+            public IntPtr hbmMask;
+            public IntPtr hbmColor;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -97,6 +119,85 @@ namespace DpSnip
 
         [DllImport("user32.dll")]
         public static extern bool DestroyIcon(IntPtr hIcon);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool GetCursorInfo(ref CURSORINFO pci);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool GetIconInfo(IntPtr hIcon, out ICONINFO piconinfo);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool DrawIconEx(
+            IntPtr hdc,
+            int xLeft,
+            int yTop,
+            IntPtr hIcon,
+            int cxWidth,
+            int cyWidth,
+            uint istepIfAniCur,
+            IntPtr hbrFlickerFreeDraw,
+            uint diFlags);
+
+        [DllImport("gdi32.dll")]
+        private static extern bool DeleteObject(IntPtr hObject);
+
+        public static bool DrawCursor(Graphics graphics, int offsetX, int offsetY)
+        {
+            if (graphics == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                CURSORINFO cursor = new CURSORINFO();
+                cursor.cbSize = Marshal.SizeOf(typeof(CURSORINFO));
+                if (!GetCursorInfo(ref cursor) ||
+                    (cursor.flags & CURSOR_SHOWING) == 0 ||
+                    cursor.hCursor == IntPtr.Zero)
+                {
+                    return false;
+                }
+
+                ICONINFO info;
+                if (!GetIconInfo(cursor.hCursor, out info))
+                {
+                    return false;
+                }
+
+                try
+                {
+                    int x = cursor.ptScreenPos.X - info.xHotspot - offsetX;
+                    int y = cursor.ptScreenPos.Y - info.yHotspot - offsetY;
+                    IntPtr hdc = graphics.GetHdc();
+                    try
+                    {
+                        return DrawIconEx(
+                            hdc, x, y, cursor.hCursor, 0, 0, 0, IntPtr.Zero, DI_NORMAL);
+                    }
+                    finally
+                    {
+                        graphics.ReleaseHdc(hdc);
+                    }
+                }
+                finally
+                {
+                    if (info.hbmMask != IntPtr.Zero)
+                    {
+                        DeleteObject(info.hbmMask);
+                    }
+
+                    if (info.hbmColor != IntPtr.Zero)
+                    {
+                        DeleteObject(info.hbmColor);
+                    }
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
 
         public static void TryEnablePerMonitorDpiAwareness()
         {

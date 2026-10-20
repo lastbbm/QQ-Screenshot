@@ -382,10 +382,10 @@ namespace DpSnip
                     break;
                 }
 
-                string path = Path.Combine(_framesDir, "frame_" + _frameCount.ToString("D6") + ".jpg");
+                string path = Path.Combine(_framesDir, "frame_" + _frameCount.ToString("D6") + ".png");
                 using (Bitmap frame = CaptureFrame())
                 {
-                    SaveJpeg(frame, path);
+                    SaveFrame(frame, path);
                 }
 
                 frames.Add(path);
@@ -422,6 +422,8 @@ namespace DpSnip
                         0,
                         new Size(_width, _height),
                         CopyPixelOperation.SourceCopy);
+                    g.CompositingMode = CompositingMode.SourceOver;
+                    Native.DrawCursor(g, _captureRect.Left, _captureRect.Top);
                 }
 
                 return bitmap;
@@ -433,38 +435,12 @@ namespace DpSnip
             }
         }
 
-        private static ImageCodecInfo _jpegCodec;
-
-        private static void SaveJpeg(Bitmap bitmap, string path)
+        private static void SaveFrame(Bitmap bitmap, string path)
         {
             try
             {
-                if (_jpegCodec == null)
-                {
-                    ImageCodecInfo[] codecs = ImageCodecInfo.GetImageEncoders();
-                    for (int i = 0; i < codecs.Length; i++)
-                    {
-                        if (codecs[i].FormatID == ImageFormat.Jpeg.Guid)
-                        {
-                            _jpegCodec = codecs[i];
-                            break;
-                        }
-                    }
-                }
-
-                if (_jpegCodec != null)
-                {
-                    using (EncoderParameters parameters = new EncoderParameters(1))
-                    using (EncoderParameter quality = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 84L))
-                    {
-                        parameters.Param[0] = quality;
-                        bitmap.Save(path, _jpegCodec, parameters);
-                    }
-                }
-                else
-                {
-                    bitmap.Save(path, ImageFormat.Jpeg);
-                }
+                // PNG keeps text and UI edges crisp before the final H.264 encode.
+                bitmap.Save(path, ImageFormat.Png);
             }
             catch (Exception ex)
             {
@@ -719,16 +695,18 @@ namespace DpSnip
                 new RectangleF(textX, 31f * _scale, titleWidth + 50f * _scale, 18f * _scale),
                 StringAlignment.Near, StringAlignment.Center, true);
 
+            float stopLeft = ClientSize.Width - pad - 68f * _scale;
             if (_recordingStarted && !_stopping)
             {
                 string elapsed = FormatElapsed(DateTime.UtcNow - _startedUtc);
+                float timerLeft = stopLeft - 10f * _scale - 74f * _scale;
                 DrawUtil.DrawText(g, elapsed, _fontTimer, Color.FromArgb(226, 231, 240),
-                    new RectangleF(ClientSize.Width - 150f * _scale, 10f * _scale, 74f * _scale, 22f * _scale),
+                    new RectangleF(timerLeft, 10f * _scale, 74f * _scale, 22f * _scale),
                     StringAlignment.Far, StringAlignment.Center, true);
             }
 
             RectangleF stop = new RectangleF(
-                ClientSize.Width - pad - 68f * _scale,
+                stopLeft,
                 centerY - 17f * _scale,
                 68f * _scale,
                 34f * _scale);
