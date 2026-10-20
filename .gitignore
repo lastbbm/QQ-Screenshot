@@ -1,0 +1,14 @@
+# Local test and build artifacts
+/test-artifacts/
+/ref/
+*.log
+*.user
+*.suo
+/bin/
+/obj/
+.vs/
+
+# OS metadata
+Thumbs.db
+Desktop.ini
+.DS_Store

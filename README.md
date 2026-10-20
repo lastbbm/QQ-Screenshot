@@ -1,0 +1,143 @@
+# DpSnip
+
+**轻量级 Windows 截图、标注与文字识别工具。单个 exe，双击即用，常驻托盘。**
+
+GitHub 仓库：[lastbbm/QQ-Screenshot](https://github.com/lastbbm/QQ-Screenshot) · 直接下载：[DpSnip.exe](https://github.com/lastbbm/QQ-Screenshot/raw/main/DpSnip.exe)
+
+灵感参考 [ScreenSnip](https://github.com/openclawzhangchong/ScreenSnip)，本版本为独立的 C# / WinForms 实现，聚焦框选、标注、箭头与离线文字识别。
+
+![DpSnip 图标](assets/DpSnip-256.png)
+
+## 下载即用
+
+把 `DpSnip.exe` 放到任意目录，双击运行。程序不会创建开始菜单快捷方式，也不会安装服务；启动后常驻系统托盘。
+
+首次运行若 Windows 提示 SmartScreen，请点「更多信息 → 仍要运行」。程序未做数字签名。
+
+## 全局热键
+
+| 快捷键 | 功能 |
+| --- | --- |
+| `Ctrl + Alt + A` | 开始截图 |
+
+热键被 QQ、微信或其他截图工具占用时，托盘会提示注册失败。右键托盘图标选择「重新注册热键」，或先关闭占用该快捷键的程序。仍可通过托盘菜单手动截图。
+
+## 截图功能
+
+| 功能 | 说明 |
+| --- | --- |
+| 框选 | 按住鼠标左键拖动；松开后可拖动八向手柄调整大小，拖动选区内部移动位置；`Ctrl + A` 全屏 |
+| 矩形 | 在选区内拖动画出矩形，支持颜色与线宽 |
+| 椭圆 | 在选区内拖动画出椭圆，支持颜色与线宽 |
+| 画笔标注 | 自由手绘曲线，支持颜色与线宽 |
+| 箭头 | 拖动生成带箭头的直线，支持颜色和粗细 |
+| 颜色修改 | 调色盘内置红、橙、黄、绿、青、蓝、紫、粉、白、灰、黑，并可打开系统取色器自定义任意颜色 |
+| 线宽 | 细 / 中 / 粗三档循环切换 |
+| 撤销 / 重做 | `Ctrl + Z` / `Ctrl + Y` |
+| 识别图中文字 | 使用 Windows 本机 OCR 识别选区文字，结果可一键复制；原图不上传网络 |
+| 完成 | 将选区（包含标注）复制到剪贴板，可直接粘贴到微信、飞书、Word 等 |
+| 另存为 | 保存为 PNG / JPEG / BMP，默认文件名为时间戳 |
+| 关闭 | 回到托盘，不退出程序 |
+| 托盘常驻 | 右键托盘菜单：截图、开机启动、关于、退出 |
+| 单实例 | 重复双击 exe 不会开第二个进程，而是呼出当前截图或开始新截图 |
+| 高 DPI / 多显示器 | 按物理像素截取完整虚拟桌面，工具栏与标注按显示器 DPI 缩放 |
+
+## 快捷键
+
+| 按键 | 功能 |
+| --- | --- |
+| `Ctrl + Alt + A` | 全局截图 |
+| `Enter` / `Ctrl + C` | 完成并复制 |
+| `Ctrl + S` | 另存为 |
+| `Ctrl + Z` / `Ctrl + Y` | 撤销 / 重做 |
+| `Ctrl + A` | 选择整个屏幕 |
+| `R` / `E` / `P` / `A` | 矩形 / 椭圆 / 画笔 / 箭头 |
+| `V` | 选择、移动或调整选区 |
+| `O` | 识别选区中的文字 |
+| `Esc` | 关闭识别窗或退出当前截图 |
+| 右键 | 退出当前截图 |
+| 双击选区 | 完成并复制 |
+
+## 文字识别说明
+
+- 文字识别调用 Windows 自带的 `Windows.Media.Ocr`，**完全在本机完成，不联网、不上传截图**。
+- 识别效果取决于系统是否安装了对应语言的 OCR 组件。中文系统通常已带简体中文 OCR；如不可用，请到「设置 → 时间和语言 → 语言」中安装「光学字符识别」功能。
+- 复杂背景、艺术字、过小或过模糊的文字可能识别不准确。尽量框选紧凑、清晰的文字区域。
+- 识别结果窗口可以直接选中文本复制，或点击「复制文本」。
+- 多语言环境会自动优先使用中文 OCR；未安装中文时回退到系统可用语言。
+
+## 开机启动
+
+右键托盘图标，勾选「开机启动」。
+
+开启后会在当前用户的注册表启动项写入：
+
+```
+HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run
+DpSnip = "<DpSnip.exe 的完整路径>" --autostart
+```
+
+取消勾选即删除该项。无需管理员权限。
+
+## 数据与隐私
+
+- 截图只在内存中处理，不会保存临时图片。
+- 配置和错误日志保存在 `%APPDATA%\DpSnip\`：
+  - `settings.ini`：上次使用的颜色、线宽和保存目录
+  - `DpSnip.log`：仅记录启动、热键注册和错误信息，不记录截图或识别文本
+- 不访问网络，不收集使用数据。
+
+## 运行要求
+
+- Windows 10 / Windows 11，64 位
+- .NET Framework 4.8（Windows 10 1903 及以上、Windows 11 默认自带）
+- 可用的 Windows OCR 语言组件（文字识别功能需要；截图与标注无需）
+
+## 从源码构建
+
+构建脚本只需要 Windows 自带的 .NET Framework 编译器与 Windows 元数据，不需要安装 Visual Studio 或额外 SDK。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build.ps1
+```
+
+输出：`DpSnip.exe`（单文件，约 124 KB）。
+
+目录结构：
+
+```
+DpSnip.exe              构建产物（可直接分发）
+build.ps1               单文件构建脚本
+src/
+  Program.cs            入口、托盘、热键、单实例、开机启动、屏幕捕获
+  CaptureForm.cs        全屏截图层、框选/调整、标注、工具栏、颜色、保存/复制
+  OcrForm.cs            识别结果浮动窗口
+  WindowsOcr.cs         Windows.Media.Ocr 封装与文本清理
+  Native.cs             Win32 / DPI 互操作
+  DrawUtil.cs           绘图工具、配色、程序图标
+  AppSettings.cs        配置、启动项、日志、剪贴板工具
+  AssemblyInfo.cs       版本信息
+  app.manifest          PerMonitorV2 DPI、Windows 10/11 兼容声明
+assets/
+  DpSnip.ico            程序与托盘图标
+  DpSnip-256.png        图标预览
+tools/
+  make-icon.ps1         重新生成图标
+```
+
+如需重建图标：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\make-icon.ps1
+```
+
+## 已知限制
+
+- 全局热键遵循 Windows 规则：同一时间只能被一个程序注册。若 QQ/微信等占用了 `Ctrl+Alt+A`，需要先关闭冲突程序。
+- 受保护视频、DRM 窗口、安全桌面可能无法截取，这是系统层面的限制。
+- 本版本未包含滚动长截图、贴图、文字标注等扩展能力，保持轻量和单文件。
+- 未做代码签名，SmartScreen 可能拦截首次运行。
+
+## 版本
+
+1.0.0
