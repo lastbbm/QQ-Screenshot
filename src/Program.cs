@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -309,6 +309,7 @@ namespace DpSnip
             _trayIcon = AppIcon.CreateTrayIcon();
             _menu = new ContextMenuStrip();
             _menu.ShowImageMargin = false;
+            _menu.ShowCheckMargin = true;
             _menu.Font = new Font("Microsoft YaHei UI", 9.2f, FontStyle.Regular, GraphicsUnit.Point);
             _menu.ShowItemToolTips = true;
 
@@ -342,6 +343,7 @@ namespace DpSnip
 
             _menu.Opening += delegate
             {
+                // Keep the check mark in sync with the actual HKCU Run entry.
                 _startupItem.Checked = StartupManager.IsEnabled();
                 _retryHotkeyItem.Visible = !_hotkeyWindow.IsRegistered;
             };
@@ -509,16 +511,19 @@ namespace DpSnip
             try
             {
                 StartupManager.SetEnabled(wantEnabled);
+                _startupItem.Checked = StartupManager.IsEnabled();
                 ShowBalloon(
                     "开机启动",
-                    wantEnabled ? "已开启。登录 Windows 后 DpSnip 会自动在托盘运行。" : "已关闭开机启动。",
+                    _startupItem.Checked
+                        ? "已开启。登录 Windows 后 DpSnip 会自动在托盘运行。"
+                        : "已关闭开机启动。",
                     ToolTipIcon.None,
                     2500);
             }
             catch (Exception ex)
             {
                 AppLog.WriteException("Startup", ex);
-                _startupItem.Checked = !wantEnabled;
+                _startupItem.Checked = StartupManager.IsEnabled();
                 MessageBox.Show(
                     "无法修改开机启动设置：\n\n" + ex.Message,
                     "DpSnip",

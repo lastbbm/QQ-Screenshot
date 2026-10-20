@@ -139,6 +139,11 @@ powershell -ExecutionPolicy Bypass -File .\tools\make-icon.ps1
 
 ## 更新记录
 
+### 1.0.3
+
+- 托盘菜单中的“开机启动”增加勾选状态，打开菜单时会读取实际的 Windows 启动项并同步显示。
+- 开启或关闭开机启动后，勾选状态会立即同步到当前实际状态。
+
 ### 1.0.2
 
 - 修复双击选区时弹出“参数无效”的问题，现在双击会正常完成并复制截图。
@@ -154,4 +159,4 @@ powershell -ExecutionPolicy Bypass -File .\tools\make-icon.ps1
 
 ## 版本
 
-1.0.2
+1.0.3
