@@ -1,12 +1,13 @@
 # DpSnip
 
+**单文件实现类似QQ截图功能，有文字识别！！！**
+
 **轻量级 Windows 截图、标注与文字识别工具。单个 exe，双击即用，常驻托盘。**
 
 GitHub 仓库：[lastbbm/QQ-Screenshot](https://github.com/lastbbm/QQ-Screenshot) · 直接下载：[DpSnip.exe](https://github.com/lastbbm/QQ-Screenshot/raw/main/DpSnip.exe)
 
-灵感参考 [ScreenSnip](https://github.com/openclawzhangchong/ScreenSnip)，本版本为独立的 C# / WinForms 实现，聚焦框选、标注、箭头与离线文字识别。
+本版本为独立的 C# / WinForms 实现，聚焦框选、标注、箭头与离线文字识别。
 
-![DpSnip 图标](assets/DpSnip-256.png)
 
 ## 下载即用
 
