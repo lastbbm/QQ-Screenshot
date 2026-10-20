@@ -139,6 +139,11 @@ powershell -ExecutionPolicy Bypass -File .\tools\make-icon.ps1
 
 ## 更新记录
 
+### 1.0.2
+
+- 修复双击选区时弹出“参数无效”的问题，现在双击会正常完成并复制截图。
+- 双击时不再启动选区拖动，避免关闭截图窗口后仍处理残留鼠标事件。
+
 ### 1.0.1
 
 - 移除截图开始时的中央提示层，进入截图后界面更干净。
@@ -149,4 +154,4 @@ powershell -ExecutionPolicy Bypass -File .\tools\make-icon.ps1
 
 ## 版本
 
-1.0.1
+1.0.2

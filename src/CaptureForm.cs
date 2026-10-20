@@ -302,6 +302,7 @@ namespace DpSnip
         private int _hoverPalette = -1;
         private bool _paletteOpen;
         private bool _closing;
+        private bool _resourcesDisposed;
 
         private OcrForm _ocrForm;
 
@@ -352,6 +353,7 @@ namespace DpSnip
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
+            _resourcesDisposed = true;
             CloseOcrForm();
             if (_screen != null)
             {
@@ -427,6 +429,11 @@ namespace DpSnip
             }
         }
 
+        private bool IsCaptureClosed
+        {
+            get { return _closing || _resourcesDisposed || IsDisposed || Disposing; }
+        }
+
         protected override void OnPaintBackground(PaintEventArgs e)
         {
             // Background is composed from the captured screen in OnPaint.
@@ -434,6 +441,11 @@ namespace DpSnip
 
         protected override void OnPaint(PaintEventArgs e)
         {
+            if (IsCaptureClosed)
+            {
+                return;
+            }
+
             base.OnPaint(e);
             if (ClientRectangle.Width <= 0 || ClientRectangle.Height <= 0)
             {
@@ -648,7 +660,7 @@ namespace DpSnip
         {
             _barButtons = new List<ToolbarButton>();
             _dividerPositions = new List<float>();
-            if (!SelectionReady)
+            if (IsCaptureClosed || !SelectionReady)
             {
                 _toolbarBounds = Rectangle.Empty;
                 return;
@@ -1759,6 +1771,11 @@ namespace DpSnip
 
         protected override void OnMouseDown(MouseEventArgs e)
         {
+            if (IsCaptureClosed)
+            {
+                return;
+            }
+
             base.OnMouseDown(e);
 
             if (e.Button == MouseButtons.Right)
@@ -1810,6 +1827,13 @@ namespace DpSnip
                 }
             }
 
+            // The second click of a double-click must not start a move or draw.
+            // OnDoubleClick will copy the selection and close this window.
+            if (e.Clicks >= 2 && SelectionReady && _selection.Contains(e.Location))
+            {
+                return;
+            }
+
             if (!_hasSelection)
             {
                 BeginCreate(e.Location);
@@ -1848,6 +1872,11 @@ namespace DpSnip
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
+            if (IsCaptureClosed)
+            {
+                return;
+            }
+
             base.OnMouseMove(e);
 
             if (_dragMode == DragMode.Creating)
@@ -1952,6 +1981,11 @@ namespace DpSnip
 
         protected override void OnMouseUp(MouseEventArgs e)
         {
+            if (IsCaptureClosed)
+            {
+                return;
+            }
+
             base.OnMouseUp(e);
             if (e.Button != MouseButtons.Left)
             {
@@ -2032,6 +2066,11 @@ namespace DpSnip
 
         protected override void OnDoubleClick(EventArgs e)
         {
+            if (IsCaptureClosed)
+            {
+                return;
+            }
+
             base.OnDoubleClick(e);
             if (!SelectionReady || _paletteOpen)
             {
@@ -2047,6 +2086,11 @@ namespace DpSnip
 
         protected override void OnMouseLeave(EventArgs e)
         {
+            if (IsCaptureClosed)
+            {
+                return;
+            }
+
             base.OnMouseLeave(e);
             Rectangle dirty = _paletteOpen
                 ? GetPaletteDirtyBounds()
@@ -2058,6 +2102,11 @@ namespace DpSnip
 
         protected override void OnMouseEnter(EventArgs e)
         {
+            if (IsCaptureClosed)
+            {
+                return;
+            }
+
             base.OnMouseEnter(e);
         }
 
