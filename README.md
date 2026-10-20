@@ -2,9 +2,9 @@
 
 **单文件实现类似QQ截图功能，有文字识别！！！**
 
-**轻量级 Windows 截图、标注与文字识别工具。单个 exe，双击即用，常驻托盘。**
+**轻量级 Windows 截图、标注、文字识别与 GIF / MP4 屏幕录制工具。单个 exe，双击即用，常驻托盘。**
 
-本版本为独立的 C# / WinForms 实现，聚焦框选、标注、箭头与离线文字识别。
+本版本为独立的 C# / WinForms 实现，聚焦框选、标注、箭头、离线文字识别与选区录屏。
 
 
 ## 下载即用
@@ -33,7 +33,9 @@
 | 颜色修改 | 调色盘内置红、橙、黄、绿、青、蓝、紫、粉、白、灰、黑，并可打开系统取色器自定义任意颜色 |
 | 线宽 | 细 / 中 / 粗三档循环切换 |
 | 撤销 / 重做 | `Ctrl + Z` / `Ctrl + Y` |
-| 识别图中文字 | 使用 Windows 本机 OCR 识别选区文字，结果可一键复制；原图不上传网络 |
+| 识别图中文字 | 点击工具栏【识】，使用 Windows 本机 OCR 识别选区文字，结果可一键复制；原图不上传网络 |
+| GIF 录制 | 点击工具栏【GIF】录制选定区域，浮动控制条点击「停止」后保存为动态 GIF（256 色、约 10 FPS） |
+| MP4 录制 | 点击工具栏【MP4】录制选定区域，点击「停止」后使用 Windows 自带 Media Foundation 编码为 H.264 MP4（无音轨） |
 | 完成 | 将选区（包含标注）复制到剪贴板，可直接粘贴到微信、飞书、Word 等 |
 | 另存为 | 保存为 PNG / JPEG / BMP，默认文件名为时间戳 |
 | 关闭 | 回到托盘，不退出程序 |
@@ -65,6 +67,22 @@
 - 识别结果窗口可以直接选中文本复制，或点击「复制文本」。
 - 多语言环境会自动优先使用中文 OCR；未安装中文时回退到系统可用语言。
 
+## GIF / MP4 录制说明
+
+1. 框选好区域后，点击工具栏中的【GIF】或【MP4】。
+2. 截图浮层会关闭，屏幕顶部或选区外侧出现录制控制条，显示录制类型和计时。
+3. 操作需要录制的内容，点击控制条右侧的红色「停止」按钮完成录制。
+4. 选择保存位置并保存文件。
+
+说明：
+
+- GIF 使用 256 色调色板，默认约 10 FPS，适合录制动图、操作演示和短片段；录制很大区域时建议缩小选区。
+- MP4 使用 Windows 内置 Media Foundation / MediaComposition 编码为 H.264，不包含音轨，不依赖外部 ffmpeg。
+- 停止后需要等待编码完成；MP4 的生成时间会随录制长度增加。
+- 录制控制条会尽量放在选区外；如果选区几乎铺满屏幕，控制条可能出现在录制画面中。
+- 录制文件会先写入系统临时目录，保存或取消后自动清理。
+- 录屏只捕获屏幕内容，不包含鼠标指针。
+
 ## 开机启动
 
 右键托盘图标，勾选「开机启动」。
@@ -81,6 +99,7 @@ DpSnip = "<DpSnip.exe 的完整路径>" --autostart
 ## 数据与隐私
 
 - 截图只在内存中处理，不会保存临时图片。
+- GIF / MP4 录制期间会在 `%TEMP%\DpSnip\` 写入临时文件；保存完成、取消或出错后会清理。
 - 配置和错误日志保存在 `%APPDATA%\DpSnip\`：
   - `settings.ini`：上次使用的颜色、线宽和保存目录
   - `DpSnip.log`：仅记录启动、热键注册和错误信息，不记录截图或识别文本
@@ -91,6 +110,7 @@ DpSnip = "<DpSnip.exe 的完整路径>" --autostart
 - Windows 10 / Windows 11，64 位
 - .NET Framework 4.8（Windows 10 1903 及以上、Windows 11 默认自带）
 - 可用的 Windows OCR 语言组件（文字识别功能需要；截图与标注无需）
+- Windows 自带的 H.264 编码能力（MP4 录制需要；Windows 10/11 默认包含）
 
 ## 从源码构建
 
@@ -100,7 +120,7 @@ DpSnip = "<DpSnip.exe 的完整路径>" --autostart
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-输出：`DpSnip.exe`（单文件，约 124 KB）。
+输出：`DpSnip.exe`（单文件，约 145 KB）。
 
 目录结构：
 
@@ -112,6 +132,9 @@ src/
   CaptureForm.cs        全屏截图层、框选/调整、标注、工具栏、颜色、保存/复制
   OcrForm.cs            识别结果浮动窗口
   WindowsOcr.cs         Windows.Media.Ocr 封装与文本清理
+  RecordingForm.cs      GIF / MP4 录制控制条、停止与保存流程
+  GifRecorder.cs        流式 GIF89a 编码器（颜色量化、透明度、LZW）
+  Mp4Encoder.cs         Windows MediaComposition / H.264 MP4 编码封装
   Native.cs             Win32 / DPI 互操作
   DrawUtil.cs           绘图工具、配色、程序图标
   AppSettings.cs        配置、启动项、日志、剪贴板工具
@@ -139,6 +162,14 @@ powershell -ExecutionPolicy Bypass -File .\tools\make-icon.ps1
 
 ## 更新记录
 
+### 1.1.0
+
+- 工具栏 OCR 图标由「文」改为「识」，字号略微缩小。
+- 新增【GIF】按钮，可录制选定区域并生成动态 GIF，录制时提供停止按钮。
+- 新增【MP4】按钮，可录制选定区域并生成 H.264 MP4 视频。
+- 录制控制条支持计时与停止，停止后可选择保存位置。
+- 保持原有截图、标注、OCR、托盘等功能。
+
 ### 1.0.3
 
 - 托盘菜单中的“开机启动”增加勾选状态，打开菜单时会读取实际的 Windows 启动项并同步显示。
@@ -159,4 +190,4 @@ powershell -ExecutionPolicy Bypass -File .\tools\make-icon.ps1
 
 ## 版本
 
-1.0.3
+1.1.0

@@ -299,6 +299,7 @@ namespace DpSnip
         private readonly WinFormsTimer _captureTimer;
         private readonly WinFormsTimer _firstRunTimer;
         private CaptureForm _captureForm;
+        private RecordingForm _recordingForm;
         private bool _exitRequested;
         private bool _disposed;
 
@@ -427,6 +428,14 @@ namespace DpSnip
                 return;
             }
 
+            if (_recordingForm != null && !_recordingForm.IsDisposed)
+            {
+                _recordingForm.BringToFront();
+                _recordingForm.Activate();
+                ShowBalloon("正在录制", "请先停止当前录制，再开始新的截图。", ToolTipIcon.Info, 2000);
+                return;
+            }
+
             if (fromMenu)
             {
                 _menu.Close();
@@ -445,7 +454,8 @@ namespace DpSnip
 
         private void DoCapture()
         {
-            if (_exitRequested)
+            if (_exitRequested ||
+                (_recordingForm != null && !_recordingForm.IsDisposed))
             {
                 return;
             }
@@ -480,6 +490,58 @@ namespace DpSnip
                 MessageBox.Show(
                     "无法截取屏幕：\n\n" + ex.Message +
                     "\n\n如果正在播放受保护视频或使用安全桌面，系统会阻止截图。",
+                    "DpSnip",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+        }
+
+        internal void StartRecording(Rectangle captureRect, RecordingFormat format)
+        {
+            if (_exitRequested)
+            {
+                return;
+            }
+
+            if (_recordingForm != null && !_recordingForm.IsDisposed)
+            {
+                _recordingForm.BringToFront();
+                _recordingForm.Activate();
+                return;
+            }
+
+            RecordingForm form = null;
+            try
+            {
+                form = new RecordingForm(captureRect, format, _settings, this);
+                _recordingForm = form;
+                form.FormClosed += delegate
+                {
+                    if (object.ReferenceEquals(_recordingForm, form))
+                    {
+                        _recordingForm = null;
+                    }
+                };
+                form.Show();
+                Native.SetForegroundWindow(form.Handle);
+            }
+            catch (Exception ex)
+            {
+                AppLog.WriteException("StartRecording", ex);
+                _recordingForm = null;
+                if (form != null)
+                {
+                    try
+                    {
+                        form.Abort();
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                MessageBox.Show(
+                    "无法开始录制：\n\n" + ex.Message,
                     "DpSnip",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
@@ -556,10 +618,11 @@ namespace DpSnip
             Version version = typeof(TrayApp).Assembly.GetName().Version;
             MessageBox.Show(
                 "DpSnip  " + version.ToString(3) + "\n\n" +
-                "轻量的 Windows 截图、标注与文字识别工具。\n\n" +
+                "轻量的 Windows 截图、标注、文字识别与 GIF/MP4 录制工具。\n\n" +
                 "全局热键：Ctrl+Alt+A\n" +
+                "录屏：框选后点击工具栏 GIF 或 MP4，停止后保存\n" +
                 "开机启动：右键托盘图标设置\n\n" +
-                "文字识别使用 Windows 内置 OCR，截图不会上传到网络。\n\n" +
+                "文字识别与视频编码均使用 Windows 本机组件，不会上传内容。\n\n" +
                 "单文件绿色版 · 数据仅保存在本机",
                 "关于 DpSnip",
                 MessageBoxButtons.OK,
@@ -582,6 +645,17 @@ namespace DpSnip
                 try
                 {
                     _captureForm.Close();
+                }
+                catch
+                {
+                }
+            }
+
+            if (_recordingForm != null && !_recordingForm.IsDisposed)
+            {
+                try
+                {
+                    _recordingForm.Abort();
                 }
                 catch
                 {
@@ -612,6 +686,17 @@ namespace DpSnip
                     {
                         _exitRequested = true;
                         _hotkeyWindow.Dispose();
+                    }
+
+                    if (_recordingForm != null && !_recordingForm.IsDisposed)
+                    {
+                        try
+                        {
+                            _recordingForm.Abort();
+                        }
+                        catch
+                        {
+                        }
                     }
 
                     _notifyIcon.Visible = false;

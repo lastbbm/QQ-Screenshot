@@ -32,6 +32,8 @@ namespace DpSnip
         Width,
         Undo,
         Ocr,
+        Gif,
+        Mp4,
         Save,
         Close,
         Done
@@ -291,6 +293,7 @@ namespace DpSnip
         private Font _fontTooltip;
         private Font _fontButton;
         private Font _fontIcon;
+        private Font _fontRecord;
         private Font _fontPaletteTitle;
 
         private Rectangle _toolbarBounds;
@@ -370,7 +373,8 @@ namespace DpSnip
             _fontBadge = DrawUtil.CreateFont(11.5f * _uiScale, FontStyle.Bold);
             _fontTooltip = DrawUtil.CreateFont(12f * _uiScale, FontStyle.Regular);
             _fontButton = DrawUtil.CreateFont(12.8f * _uiScale, FontStyle.Bold);
-            _fontIcon = DrawUtil.CreateFont(16.5f * _uiScale, FontStyle.Bold);
+            _fontIcon = DrawUtil.CreateFont(14.4f * _uiScale, FontStyle.Bold);
+            _fontRecord = DrawUtil.CreateFont(10.8f * _uiScale, FontStyle.Bold);
             _fontPaletteTitle = DrawUtil.CreateFont(12.3f * _uiScale, FontStyle.Bold);
         }
 
@@ -378,7 +382,7 @@ namespace DpSnip
         {
             Font[] fonts = new Font[]
             {
-                _fontBadge, _fontTooltip, _fontButton, _fontIcon, _fontPaletteTitle
+                _fontBadge, _fontTooltip, _fontButton, _fontIcon, _fontRecord, _fontPaletteTitle
             };
             for (int i = 0; i < fonts.Length; i++)
             {
@@ -392,6 +396,7 @@ namespace DpSnip
             _fontTooltip = null;
             _fontButton = null;
             _fontIcon = null;
+            _fontRecord = null;
             _fontPaletteTitle = null;
         }
 
@@ -668,6 +673,7 @@ namespace DpSnip
 
             float scale = _uiScale;
             float buttonSize = 36f * scale;
+            float recordWidth = 42f * scale;
             float doneWidth = 67f * scale;
             float gap = 2f * scale;
             float groupGap = 9f * scale;
@@ -679,7 +685,7 @@ namespace DpSnip
                 BarAction.Select, BarAction.Rectangle, BarAction.Ellipse, BarAction.Pen, BarAction.Arrow,
                 BarAction.Color, BarAction.Width,
                 BarAction.Undo,
-                BarAction.Ocr,
+                BarAction.Ocr, BarAction.Gif, BarAction.Mp4,
                 BarAction.Save, BarAction.Close, BarAction.Done
             };
             bool[] groupBefore = new bool[]
@@ -687,7 +693,7 @@ namespace DpSnip
                 false, false, false, false, false,
                 true, false,
                 true,
-                true,
+                true, false, false,
                 true, false, false
             };
             string[] tips = new string[]
@@ -701,6 +707,8 @@ namespace DpSnip
                 "线宽：" + WidthNames[_widthLevel] + "（点击切换）",
                 "撤销   Ctrl+Z",
                 "识别图中文字   O",
+                "录制选定区域为 GIF 动图",
+                "录制选定区域为 MP4 视频",
                 "另存为   Ctrl+S",
                 "关闭截图   Esc",
                 "完成并复制   Enter"
@@ -715,7 +723,9 @@ namespace DpSnip
                     _dividerPositions.Add(contentX - groupGap / 2f);
                 }
 
-                float width = actions[i] == BarAction.Done ? doneWidth : buttonSize;
+                float width = actions[i] == BarAction.Done
+                    ? doneWidth
+                    : (actions[i] == BarAction.Gif || actions[i] == BarAction.Mp4 ? recordWidth : buttonSize);
                 ToolbarButton button = new ToolbarButton();
                 button.Action = actions[i];
                 button.Tooltip = tips[i];
@@ -877,6 +887,7 @@ namespace DpSnip
             }
 
             float iconSize = 19f * _uiScale;
+            float iconWidth = iconSize;
             float iconX;
             if (button.Action == BarAction.Done)
             {
@@ -891,15 +902,20 @@ namespace DpSnip
                 DrawUtil.DrawText(g, "完成", _fontButton, iconColor, textRect,
                     StringAlignment.Near, StringAlignment.Center, true);
             }
+            else if (button.Action == BarAction.Gif || button.Action == BarAction.Mp4)
+            {
+                iconWidth = rect.Width - 6f * _uiScale;
+                iconX = rect.X + (rect.Width - iconWidth) / 2f;
+            }
             else
             {
-                iconX = rect.X + (rect.Width - iconSize) / 2f;
+                iconX = rect.X + (rect.Width - iconWidth) / 2f;
             }
 
             RectangleF iconRect = new RectangleF(
                 iconX,
                 rect.Y + (rect.Height - iconSize) / 2f,
-                iconSize, iconSize);
+                iconWidth, iconSize);
             DrawIcon(g, button.Action, iconRect, iconColor, button.Enabled);
         }
 
@@ -1064,7 +1080,29 @@ namespace DpSnip
                                 {
                                     format.Alignment = StringAlignment.Center;
                                     format.LineAlignment = StringAlignment.Center;
-                                    g.DrawString("文", _fontIcon, brush, textRect, format);
+                                    g.DrawString("识", _fontIcon, brush, textRect, format);
+                                }
+                                break;
+                            }
+
+                        case BarAction.Gif:
+                            {
+                                using (StringFormat format = new StringFormat())
+                                {
+                                    format.Alignment = StringAlignment.Center;
+                                    format.LineAlignment = StringAlignment.Center;
+                                    g.DrawString("GIF", _fontRecord, brush, r, format);
+                                }
+                                break;
+                            }
+
+                        case BarAction.Mp4:
+                            {
+                                using (StringFormat format = new StringFormat())
+                                {
+                                    format.Alignment = StringAlignment.Center;
+                                    format.LineAlignment = StringAlignment.Center;
+                                    g.DrawString("MP4", _fontRecord, brush, r, format);
                                 }
                                 break;
                             }
@@ -2435,6 +2473,12 @@ namespace DpSnip
                 case BarAction.Ocr:
                     StartOcr();
                     break;
+                case BarAction.Gif:
+                    StartRecording(RecordingFormat.Gif);
+                    break;
+                case BarAction.Mp4:
+                    StartRecording(RecordingFormat.Mp4);
+                    break;
                 case BarAction.Save:
                     SaveAs();
                     break;
@@ -2732,6 +2776,31 @@ namespace DpSnip
             {
                 bitmap.Save(path, ImageFormat.Png);
             }
+        }
+
+        private void StartRecording(RecordingFormat format)
+        {
+            if (!SelectionReady || IsCaptureClosed)
+            {
+                return;
+            }
+
+            if (_selection.Width < 16 || _selection.Height < 16)
+            {
+                _app.ShowToast("无法录制", "录制区域至少需要 16 × 16 像素。");
+                return;
+            }
+
+            _paletteOpen = false;
+            _paletteCells = null;
+            Rectangle captureRect = new Rectangle(
+                _screenBounds.X + _selection.X,
+                _screenBounds.Y + _selection.Y,
+                _selection.Width,
+                _selection.Height);
+
+            _app.StartRecording(captureRect, format);
+            CloseCapture();
         }
 
         private void StartOcr()
