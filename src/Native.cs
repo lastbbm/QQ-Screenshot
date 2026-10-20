@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -140,6 +141,79 @@ namespace DpSnip
 
         [DllImport("gdi32.dll")]
         private static extern bool DeleteObject(IntPtr hObject);
+
+        public static Cursor CreateWhiteCrosshairCursor(int requestedSize)
+        {
+            int size = Math.Max(24, Math.Min(64, requestedSize));
+            int thickness = size >= 44 ? 2 : 1;
+            int center = size / 2;
+            int lineStart = center - thickness / 2;
+            int stride = ((size + 31) / 32) * 4;
+            byte[] xor = new byte[stride * size];
+            byte[] mask = new byte[stride * size];
+
+            for (int i = 0; i < mask.Length; i++)
+            {
+                mask[i] = 0xFF;
+            }
+
+            for (int y = 0; y < size; y++)
+            {
+                int row = size - 1 - y;
+                for (int x = 0; x < size; x++)
+                {
+                    bool vertical = x >= lineStart && x < lineStart + thickness &&
+                                    y >= 1 && y <= size - 2;
+                    bool horizontal = y >= lineStart && y < lineStart + thickness &&
+                                      x >= 1 && x <= size - 2;
+                    if (!vertical && !horizontal)
+                    {
+                        continue;
+                    }
+
+                    int offset = row * stride + (x / 8);
+                    byte bit = (byte)(1 << (7 - (x % 8)));
+                    // Monochrome cursor ROP: (screen AND mask) XOR xor.
+                    // mask=0, xor=1 forces a pure white pixel on any background.
+                    xor[offset] |= bit;
+                    mask[offset] &= (byte)~bit;
+                }
+            }
+
+            using (MemoryStream stream = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                writer.Write((ushort)0);
+                writer.Write((ushort)2);
+                writer.Write((ushort)1);
+                writer.Write((byte)size);
+                writer.Write((byte)size);
+                writer.Write((byte)2);
+                writer.Write((byte)0);
+                writer.Write((ushort)center);
+                writer.Write((ushort)center);
+                writer.Write((uint)(40 + 8 + xor.Length + mask.Length));
+                writer.Write((uint)22);
+
+                writer.Write((uint)40);
+                writer.Write(size);
+                writer.Write(size * 2);
+                writer.Write((ushort)1);
+                writer.Write((ushort)1);
+                writer.Write((uint)0);
+                writer.Write((uint)(xor.Length + mask.Length));
+                writer.Write(0);
+                writer.Write(0);
+                writer.Write((uint)2);
+                writer.Write((uint)0);
+                writer.Write(new byte[] { 0, 0, 0, 0, 255, 255, 255, 0 });
+                writer.Write(xor);
+                writer.Write(mask);
+                writer.Flush();
+                stream.Position = 0;
+                return new Cursor(stream);
+            }
+        }
 
         public static bool DrawCursor(Graphics graphics, int offsetX, int offsetY)
         {

@@ -306,6 +306,7 @@ namespace DpSnip
         private bool _paletteOpen;
         private bool _closing;
         private bool _resourcesDisposed;
+        private Cursor _crosshairCursor;
 
         private OcrForm _ocrForm;
 
@@ -333,7 +334,6 @@ namespace DpSnip
             Bounds = screenBounds;
             Text = "DpSnip 截图";
             TopMost = true;
-            Cursor = Cursors.Cross;
 
             SetStyle(ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.OptimizedDoubleBuffer |
@@ -343,6 +343,8 @@ namespace DpSnip
 
             _uiScale = Native.GetUiScaleForPoint(Cursor.Position);
             RecreateFonts();
+            RecreateCrosshairCursor();
+            Cursor = CrosshairCursor;
         }
 
         protected override void OnShown(EventArgs e)
@@ -361,6 +363,20 @@ namespace DpSnip
             if (_screen != null)
             {
                 _screen.Dispose();
+            }
+
+            try
+            {
+                Cursor = Cursors.Default;
+            }
+            catch
+            {
+            }
+
+            if (_crosshairCursor != null)
+            {
+                _crosshairCursor.Dispose();
+                _crosshairCursor = null;
             }
 
             DisposeFonts();
@@ -415,6 +431,37 @@ namespace DpSnip
             {
                 _uiScale = scale;
                 RecreateFonts();
+                RecreateCrosshairCursor();
+            }
+        }
+
+        private Cursor CrosshairCursor
+        {
+            get { return _crosshairCursor != null ? _crosshairCursor : Cursors.Cross; }
+        }
+
+        private void RecreateCrosshairCursor()
+        {
+            Cursor previous = _crosshairCursor;
+            Cursor current = Cursor;
+            try
+            {
+                int size = (int)Math.Round(32f * _uiScale);
+                _crosshairCursor = Native.CreateWhiteCrosshairCursor(size);
+            }
+            catch
+            {
+                _crosshairCursor = null;
+            }
+
+            if (object.ReferenceEquals(current, previous))
+            {
+                Cursor = CrosshairCursor;
+            }
+
+            if (previous != null)
+            {
+                previous.Dispose();
             }
         }
 
@@ -566,16 +613,30 @@ namespace DpSnip
         private void DrawSelectionBorder(Graphics g)
         {
             Rectangle r = _selection;
-            using (Pen shadow = new Pen(Color.FromArgb(130, 0, 0, 0), Math.Max(1f, 2f * _uiScale)))
-            using (Pen accent = new Pen(AppPalette.Accent, Math.Max(1f, 1.4f * _uiScale)))
+            if (r.Width <= 0 || r.Height <= 0)
             {
-                g.DrawRectangle(shadow, r.X - 1, r.Y - 1, r.Width + 1, r.Height + 1);
-                g.DrawRectangle(accent, r.X, r.Y, r.Width - 1, r.Height - 1);
+                return;
             }
 
-            using (Pen inner = new Pen(Color.FromArgb(90, 255, 255, 255), 1f))
+            SmoothingMode oldSmoothing = g.SmoothingMode;
+            PixelOffsetMode oldPixelOffset = g.PixelOffsetMode;
+            g.SmoothingMode = SmoothingMode.None;
+            g.PixelOffsetMode = PixelOffsetMode.None;
+            try
             {
-                g.DrawRectangle(inner, r.X + 1, r.Y + 1, r.Width - 3, r.Height - 3);
+                // Paint four exact 1px strips so every edge has the same weight.
+                using (SolidBrush brush = new SolidBrush(AppPalette.Accent))
+                {
+                    g.FillRectangle(brush, r.Left, r.Top, r.Width, 1);
+                    g.FillRectangle(brush, r.Left, r.Bottom - 1, r.Width, 1);
+                    g.FillRectangle(brush, r.Left, r.Top, 1, r.Height);
+                    g.FillRectangle(brush, r.Right - 1, r.Top, 1, r.Height);
+                }
+            }
+            finally
+            {
+                g.SmoothingMode = oldSmoothing;
+                g.PixelOffsetMode = oldPixelOffset;
             }
         }
 
@@ -2286,7 +2347,7 @@ namespace DpSnip
 
             if (!_hasSelection)
             {
-                Cursor = Cursors.Cross;
+                Cursor = CrosshairCursor;
                 return;
             }
 
@@ -2323,11 +2384,11 @@ namespace DpSnip
                     return;
                 }
 
-                Cursor = Cursors.Cross;
+                Cursor = CrosshairCursor;
             }
             else
             {
-                Cursor = _selection.Contains(location) ? Cursors.Cross : Cursors.Default;
+                Cursor = _selection.Contains(location) ? CrosshairCursor : Cursors.Default;
             }
         }
 
