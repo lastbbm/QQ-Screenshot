@@ -620,9 +620,9 @@ namespace DpSnip
                 "DpSnip  " + version.ToString(3) + "\n\n" +
                 "轻量的 Windows 截图、标注、文字识别与 GIF/MP4 录制工具。\n\n" +
                 "全局热键：Ctrl+Alt+A\n" +
-                "录屏：框选后点击工具栏 GIF 或 MP4，停止后保存\n" +
+                "录屏：框选后点击工具栏 GIF 或 MP4，停止后保存（MP4 含系统声音）\n" +
                 "开机启动：右键托盘图标设置\n\n" +
-                "文字识别与视频编码均使用 Windows 本机组件，不会上传内容。\n\n" +
+                "文字识别、系统声音采集与视频编码均使用 Windows 本机组件，不会上传内容。\n\n" +
                 "单文件绿色版 · 数据仅保存在本机",
                 "关于 DpSnip",
                 MessageBoxButtons.OK,

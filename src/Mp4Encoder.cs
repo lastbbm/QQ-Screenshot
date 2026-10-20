@@ -18,7 +18,8 @@ namespace DpSnip
             int width,
             int height,
             int frameRate,
-            int frameDurationMilliseconds)
+            int frameDurationMilliseconds,
+            string audioPath)
         {
             if (imagePaths == null || imagePaths.Count == 0)
             {
@@ -42,6 +43,8 @@ namespace DpSnip
                 composition.Clips.Add(clip);
             }
 
+            AddSystemAudio(composition, audioPath, imagePaths.Count, safeDuration);
+
             string directory = Path.GetDirectoryName(outputPath);
             if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
             {
@@ -59,6 +62,7 @@ namespace DpSnip
             profile.Video.FrameRate.Numerator = (uint)safeFrameRate;
             profile.Video.FrameRate.Denominator = 1;
             profile.Video.Bitrate = (uint)Math.Max(8000000, Math.Min(30000000, width * height * 10));
+            profile.Audio.Bitrate = 192000;
 
             IAsyncOperationWithProgress<TranscodeFailureReason, double> operation =
                 composition.RenderToFileAsync(output, MediaTrimmingPreference.Fast, profile);
@@ -96,6 +100,47 @@ namespace DpSnip
             if (!File.Exists(outputPath) || new FileInfo(outputPath).Length <= 0)
             {
                 throw new IOException("MP4 文件生成失败。");
+            }
+        }
+
+        private static void AddSystemAudio(
+            MediaComposition composition,
+            string audioPath,
+            int frameCount,
+            int frameDurationMilliseconds)
+        {
+            if (string.IsNullOrEmpty(audioPath) || !File.Exists(audioPath))
+            {
+                return;
+            }
+
+            try
+            {
+                if (new FileInfo(audioPath).Length <= 44)
+                {
+                    return;
+                }
+
+                StorageFile audioFile = Wait(StorageFile.GetFileFromPathAsync(audioPath));
+                BackgroundAudioTrack audio = Wait(
+                    BackgroundAudioTrack.CreateFromFileAsync(audioFile));
+                TimeSpan videoDuration = TimeSpan.FromMilliseconds(
+                    (long)frameCount * frameDurationMilliseconds);
+                if (audio.OriginalDuration > videoDuration)
+                {
+                    TimeSpan excess = audio.OriginalDuration - videoDuration;
+                    if (excess > TimeSpan.FromMilliseconds(1))
+                    {
+                        audio.TrimTimeFromEnd = excess;
+                    }
+                }
+
+                audio.Volume = 1.0;
+                composition.BackgroundAudioTracks.Add(audio);
+            }
+            catch (Exception ex)
+            {
+                AppLog.WriteException("Mp4SystemAudio", ex);
             }
         }
 

@@ -43,6 +43,7 @@ namespace DpSnip
         private readonly ManualResetEvent _stopEvent;
 
         private Thread _worker;
+        private volatile WasapiAudioRecorder _audioRecorder;
         private volatile bool _recordingStarted;
         private volatile bool _stopping;
         private volatile bool _stopRequested;
@@ -166,6 +167,12 @@ namespace DpSnip
             }
             catch
             {
+            }
+
+            WasapiAudioRecorder audio = _audioRecorder;
+            if (audio != null)
+            {
+                audio.RequestStop();
             }
 
             _allowClose = true;
@@ -312,6 +319,12 @@ namespace DpSnip
             }
             finally
             {
+                WasapiAudioRecorder audio = _audioRecorder;
+                if (audio != null)
+                {
+                    audio.RequestStop();
+                }
+
                 _workerRunning = false;
                 _workerFinished = true;
                 if (_aborted || IsDisposed)
@@ -371,40 +384,69 @@ namespace DpSnip
         private void RecordMp4()
         {
             Directory.CreateDirectory(_framesDir);
-            List<string> frames = new List<string>();
-            Stopwatch clock = Stopwatch.StartNew();
-            long nextFrameAt = 0;
-            while (true)
+            WasapiAudioRecorder audio = null;
+            try
             {
-                bool stopping = _stopRequested;
-                if (stopping && _frameCount > 0)
-                {
-                    break;
-                }
+                audio = new WasapiAudioRecorder(Path.Combine(_sessionDir, "system-audio.wav"));
+                _audioRecorder = audio;
+                audio.Start();
+            }
+            catch (Exception ex)
+            {
+                AppLog.WriteException("StartSystemAudio", ex);
+            }
 
-                string path = Path.Combine(_framesDir, "frame_" + _frameCount.ToString("D6") + ".png");
-                using (Bitmap frame = CaptureFrame())
+            List<string> frames = new List<string>();
+            try
+            {
+                Stopwatch clock = Stopwatch.StartNew();
+                long nextFrameAt = 0;
+                while (true)
                 {
-                    SaveFrame(frame, path);
-                }
+                    bool stopping = _stopRequested;
+                    if (stopping && _frameCount > 0)
+                    {
+                        break;
+                    }
 
-                frames.Add(path);
-                _frameCount++;
-                if (_stopRequested)
-                {
-                    break;
-                }
+                    string path = Path.Combine(_framesDir, "frame_" + _frameCount.ToString("D6") + ".png");
+                    using (Bitmap frame = CaptureFrame())
+                    {
+                        SaveFrame(frame, path);
+                    }
 
-                nextFrameAt += FrameIntervalMs;
-                long remaining = nextFrameAt - clock.ElapsedMilliseconds;
-                if (remaining > 0)
+                    frames.Add(path);
+                    _frameCount++;
+                    if (_stopRequested)
+                    {
+                        break;
+                    }
+
+                    nextFrameAt += FrameIntervalMs;
+                    long remaining = nextFrameAt - clock.ElapsedMilliseconds;
+                    if (remaining > 0)
+                    {
+                        _stopEvent.WaitOne((int)remaining);
+                    }
+                }
+            }
+            finally
+            {
+                if (audio != null)
                 {
-                    _stopEvent.WaitOne((int)remaining);
+                    audio.RequestStop();
+                    audio.WaitForFinish(3000);
                 }
             }
 
+            string audioPath = null;
+            if (audio != null && audio.HasData && audio.Error == null)
+            {
+                audioPath = audio.OutputPath;
+            }
+
             Mp4Encoder.EncodeImageSequence(
-                frames, _tempFile, _width, _height, 10, FrameIntervalMs);
+                frames, _tempFile, _width, _height, 10, FrameIntervalMs, audioPath);
         }
 
         private Bitmap CaptureFrame()
@@ -469,6 +511,12 @@ namespace DpSnip
             }
             catch
             {
+            }
+
+            WasapiAudioRecorder audio = _audioRecorder;
+            if (audio != null)
+            {
+                audio.RequestStop();
             }
 
             Invalidate();
@@ -690,7 +738,32 @@ namespace DpSnip
                 new RectangleF(textX, 10f * _scale, titleWidth, 22f * _scale),
                 StringAlignment.Near, StringAlignment.Center, true);
 
-            string subtitle = _stopping ? "请稍候，正在完成文件" : "点击右侧停止按钮结束录制";
+            string subtitle;
+            if (_stopping)
+            {
+                subtitle = "请稍候，正在完成文件";
+            }
+            else if (_format == RecordingFormat.Mp4 && _recordingStarted)
+            {
+                WasapiAudioRecorder audio = _audioRecorder;
+                if (audio != null && audio.IsActive)
+                {
+                    subtitle = "含系统声音 · 点击停止结束";
+                }
+                else if (audio != null && audio.Error != null)
+                {
+                    subtitle = "系统声音不可用 · 仅录制画面";
+                }
+                else
+                {
+                    subtitle = "点击右侧停止按钮结束录制";
+                }
+            }
+            else
+            {
+                subtitle = "点击右侧停止按钮结束录制";
+            }
+
             DrawUtil.DrawText(g, subtitle, _fontSub, AppPalette.MutedText,
                 new RectangleF(textX, 31f * _scale, titleWidth + 50f * _scale, 18f * _scale),
                 StringAlignment.Near, StringAlignment.Center, true);
@@ -821,6 +894,16 @@ namespace DpSnip
             }
             catch
             {
+            }
+
+            WasapiAudioRecorder audio = _audioRecorder;
+            if (audio != null)
+            {
+                audio.RequestStop();
+                if (!_workerRunning)
+                {
+                    audio.Dispose();
+                }
             }
 
             if (!_workerRunning)

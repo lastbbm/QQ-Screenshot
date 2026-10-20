@@ -35,7 +35,7 @@
 | 撤销 / 重做 | `Ctrl + Z` / `Ctrl + Y` |
 | 识别图中文字 | 点击工具栏【识】，使用 Windows 本机 OCR 识别选区文字，结果可一键复制；原图不上传网络 |
 | GIF 录制 | 点击工具栏【GIF】录制选定区域，浮动控制条点击「停止」后保存为动态 GIF（256 色、约 10 FPS） |
-| MP4 录制 | 点击工具栏【MP4】录制选定区域，点击「停止」后使用 Windows 自带 Media Foundation 编码为 H.264 MP4（无音轨） |
+| MP4 录制 | 点击工具栏【MP4】录制选定区域，点击「停止」后使用 Windows 自带 Media Foundation 编码为 H.264 MP4，并自动录制系统声音 |
 | 完成 | 将选区（包含标注）复制到剪贴板，可直接粘贴到微信、飞书、Word 等 |
 | 另存为 | 保存为 PNG / JPEG / BMP，默认文件名为时间戳 |
 | 关闭 | 回到托盘，不退出程序 |
@@ -77,7 +77,9 @@
 说明：
 
 - GIF 使用 256 色调色板，默认约 10 FPS，适合录制动图、操作演示和短片段；录制很大区域时建议缩小选区。
-- MP4 使用 Windows 内置 Media Foundation / MediaComposition 编码为 H.264，不包含音轨，不依赖外部 ffmpeg。源帧使用 PNG 无损采集，码率提高到 8–30 Mbps，以减少文字和边缘的压缩痕迹。
+- MP4 使用 Windows 内置 Media Foundation / MediaComposition 编码为 H.264，不依赖外部 ffmpeg。源帧使用 PNG 无损采集，码率提高到 8–30 Mbps，以减少文字和边缘的压缩痕迹。
+- MP4 默认通过 Windows WASAPI Loopback 录制系统声音（扬声器正在播放的声音），不采集麦克风；录制控制条会显示「含系统声音」。
+- 如果系统没有可用的音频输出设备，或系统声音采集失败，MP4 会自动退化为纯画面录制，控制条会提示「系统声音不可用 · 仅录制画面」。
 - 停止后需要等待编码完成；MP4 的生成时间会随录制长度增加。
 - 录制控制条会尽量放在选区外；如果选区几乎铺满屏幕，控制条可能出现在录制画面中。
 - 录制文件会先写入系统临时目录，保存或取消后自动清理。
@@ -100,6 +102,7 @@ DpSnip = "<DpSnip.exe 的完整路径>" --autostart
 
 - 截图只在内存中处理，不会保存临时图片。
 - GIF / MP4 录制期间会在 `%TEMP%\DpSnip\` 写入临时文件；保存完成、取消或出错后会清理。
+- MP4 录制会采集系统正在播放的声音，并写入本地 MP4 文件；声音不会上传网络。
 - 配置和错误日志保存在 `%APPDATA%\DpSnip\`：
   - `settings.ini`：上次使用的颜色、线宽和保存目录
   - `DpSnip.log`：仅记录启动、热键注册和错误信息，不记录截图或识别文本
@@ -111,6 +114,7 @@ DpSnip = "<DpSnip.exe 的完整路径>" --autostart
 - .NET Framework 4.8（Windows 10 1903 及以上、Windows 11 默认自带）
 - 可用的 Windows OCR 语言组件（文字识别功能需要；截图与标注无需）
 - Windows 自带的 H.264 编码能力（MP4 录制需要；Windows 10/11 默认包含）
+- 默认音频输出设备（MP4 系统声音录制需要；无设备时自动仅录制画面）
 
 ## 从源码构建
 
@@ -120,7 +124,7 @@ DpSnip = "<DpSnip.exe 的完整路径>" --autostart
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-输出：`DpSnip.exe`（单文件，约 146 KB）。
+输出：`DpSnip.exe`（单文件，约 151 KB）。
 
 目录结构：
 
@@ -135,6 +139,7 @@ src/
   RecordingForm.cs      GIF / MP4 录制控制条、停止与保存流程
   GifRecorder.cs        流式 GIF89a 编码器（颜色量化、透明度、LZW）
   Mp4Encoder.cs         Windows MediaComposition / H.264 MP4 编码封装
+  WasapiAudioRecorder.cs WASAPI Loopback 系统声音录制
   Native.cs             Win32 / DPI 互操作
   DrawUtil.cs           绘图工具、配色、程序图标
   AppSettings.cs        配置、启动项、日志、剪贴板工具
@@ -161,6 +166,13 @@ powershell -ExecutionPolicy Bypass -File .\tools\make-icon.ps1
 - 未做代码签名，SmartScreen 可能拦截首次运行。
 
 ## 更新记录
+
+### 1.2.0
+
+- MP4 录制新增系统声音：通过 Windows WASAPI Loopback 捕获扬声器输出，并与 H.264 视频一起封装为 AAC 音轨。
+- 录制控制条会显示「含系统声音」；没有可用音频设备时自动退化为纯画面录制并给出提示。
+- 系统声音不采集麦克风；GIF 仍然保持无声。
+- 保持计时、停止按钮、鼠标指针捕获与 MP4 画质设置。
 
 ### 1.1.1
 
@@ -196,4 +208,4 @@ powershell -ExecutionPolicy Bypass -File .\tools\make-icon.ps1
 
 ## 版本
 
-1.1.1
+1.2.0
