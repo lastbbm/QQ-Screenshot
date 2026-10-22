@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
@@ -409,6 +409,11 @@ namespace DpSnip
                 _hasText = true;
                 _textValue = outcome.Text ?? string.Empty;
                 _statusText = string.Format("{0} 行 · {1} 字符", outcome.LineCount, outcome.CharCount);
+                if (outcome.SuggestEnglishOcr)
+                {
+                    _statusText += " · 英文建议安装英语 OCR";
+                }
+
                 _statusColor = AppPalette.SubInk;
                 _subtitle = "Windows 本机 OCR" + (string.IsNullOrEmpty(outcome.LanguageName) ? string.Empty : " · " + outcome.LanguageName);
                 _textBox.ForeColor = AppPalette.Ink;
